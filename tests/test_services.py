@@ -1,41 +1,35 @@
 import json
-import unittest
 
 from src.services import search_transactions
 
 
-class TestSearchTransactions(unittest.TestCase):  # type: ignore
+def test_search_transactions():  # type: ignore
+    # Тестируем поиск по описанию
+    query = "Apteka 78-439"
+    expected_result = [
+        {
+            "MCC": 5912.0,
+            "Бонусы (включая кэшбэк)": 4,
+            "Валюта операции": "RUB",
+            "Валюта платежа": "RUB",
+            "Дата операции": "21.11.2020 17:01:07",
+            "Дата платежа": "24.11.2020",
+            "Категория": "Аптеки",
+            "Кэшбэк": 4.0,
+            "Номер карты": "*4556",
+            "Округление на инвесткопилку": 0,
+            "Описание": "Apteka 78-439",
+            "Статус": "OK",
+            "Сумма операции": -95.0,
+            "Сумма операции с округлением": 95.0,
+            "Сумма платежа": -95.0,
+        }
+    ]
+    result = search_transactions(query)
+    assert json.loads(result) == expected_result, f"Ошибка: ожидалось {expected_result}, получено {json.loads(result)}"
 
-    def setUp(self):  # type: ignore
-        # Подготовка тестовых данных
-        self.transactions = [
-            {"ID": 1, "Описание": "Покупка кофе", "Категория": "Еда", "Сумма": 5.0},
-            {"ID": 2, "Описание": "Оплата коммунальных услуг", "Категория": "Коммуналка", "Сумма": 100.0},
-            {"ID": 3, "Описание": "Купил новый компьютер", "Категория": "Электроника", "Сумма": 1500.0},
-            {"ID": 4, "Описание": "Посещение кинотеатра", "Категория": "Развлечения", "Сумма": 15.0},
-        ]
-
-    def test_search_by_description(self):  # type: ignore
-        result = search_transactions(self.transactions, "кофе")
-        expected = [{"ID": 1, "Описание": "Покупка кофе", "Категория": "Еда", "Сумма": 5.0}]
-        self.assertEqual(json.loads(result), expected)
-
-    def test_search_by_category(self):  # type: ignore
-        result = search_transactions(self.transactions, "развлечения")
-        expected = [{"ID": 4, "Описание": "Посещение кинотеатра", "Категория": "Развлечения", "Сумма": 15.0}]
-        self.assertEqual(json.loads(result), expected)
-
-    def test_search_no_matches(self):  # type: ignore
-        result = search_transactions(self.transactions, "негативный запрос")
-        expected = []
-        self.assertEqual(json.loads(result), expected)
-
-    def test_search_empty_query(self):  # type: ignore
-        result = search_transactions(self.transactions, "")
-        expected = self.transactions  # Ожидаем, что вернется весь список транзакций
-        self.assertEqual(json.loads(result), expected)
-
-    def test_search_case_insensitivity(self):  # type: ignore
-        result = search_transactions(self.transactions, "КОФЕ")
-        expected = [{"ID": 1, "Описание": "Покупка кофе", "Категория": "Еда", "Сумма": 5.0}]
-        self.assertEqual(json.loads(result), expected)
+    # Тестируем поиск, который не дает результатов
+    query = "неизвестный запрос"
+    expected_result = []
+    result = search_transactions(query)
+    assert json.loads(result) == expected_result, f"Ошибка: ожидалось {expected_result}, получено {json.loads(result)}"

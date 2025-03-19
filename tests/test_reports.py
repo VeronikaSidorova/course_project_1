@@ -1,17 +1,24 @@
+import unittest
+
 import pandas as pd
-import pytest
 
 from src.reports import spending_by_category
-from src.utils import transactions
 
 
-@pytest.fixture
-def get_operations_df():  # type: ignore
-    transactions_df = pd.DataFrame(transactions)
-    return transactions_df
+class TestSpendingByCategory(unittest.TestCase):  # type: ignore
 
+    def setUp(self):  # type: ignore
+        # Создаем тестовые данные
+        self.test_data = pd.DataFrame(
+            {
+                "Дата операции": ["01.01.2023", "15.01.2023", "20.02.2023"],
+                "Категория": ["Еда", "Еда", "Транспорт"],
+                "Сумма операции": [-1000, -500, -300],
+                "Сумма платежа": [1000, 500, 300],
+            }
+        )
 
-def test_spending_by_category(get_operations_df):  # type: ignore
-    actual = spending_by_category(get_operations_df, "Аптеки", "06.01.2020")
-    expected = -2737.0
-    assert actual == expected
+    def test_spending_by_category_food(self):  # type: ignore
+        result = spending_by_category(self.test_data, "еда", "15.04.2023")
+        expected_total = 500
+        self.assertEqual(result.iloc[0, 0], expected_total)

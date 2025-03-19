@@ -4,8 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import (calculate_cashback, get_currency_rates, get_greeting, get_top_transactions, process_cards,
-                       reader_excel)
+from src.utils import get_currency_rates, get_greeting, get_top_transactions, process_cards
 
 
 def test_get_greeting():  # type: ignore
@@ -15,36 +14,53 @@ def test_get_greeting():  # type: ignore
     assert get_greeting(datetime(2022, 1, 1, 23)) == "Доброй ночи!"
 
 
-def test_calculate_cashback():  # type: ignore
-    assert calculate_cashback(100.0) == 1.0
-    assert calculate_cashback(250.50) == 2.505
-    assert calculate_cashback(0) == 0.0
-
-
 def test_process_cards():  # type: ignore
-    transactions = [
-        {"Номер карты": "1234567890123456", "Сумма операции": 100},
-        {"Номер карты": "1234567890123456", "Сумма операции": 50},
-        {"Номер карты": "6543210987654321", "Сумма операции": 300},
-    ]
-    result = process_cards(transactions)
-    assert len(result) == 2
-    assert result[0]["last_digits"] == "3456"
-    assert result[0]["total_spent"] == 150
-    assert result[1]["last_digits"] == "4321"
-    assert result[1]["total_spent"] == 300
+    # Создаем тестовый DataFrame
+    data = {
+        "Номер карты": [
+            "1234567890123456",
+            "1234567890123456",
+            "9876543210123456",
+            "9876543210123456",
+            "1234567890123456",
+        ],
+        "Сумма операции": [1000, 2000, 1500, 500, 300],
+    }
+    transactions_card = pd.DataFrame(data)
+
+    # Ожидаемый результат
+    expected_result = [{"cashback": 53, "last_digits": "3456", "total_spent": 5300}]
+
+    # Вызов тестируемой функции
+    result = process_cards(transactions_card)
+
+    # Проверка результата
+    assert result == expected_result, f"Ошибка: ожидалось {expected_result}, получено {result}"
 
 
 def test_get_top_transactions():  # type: ignore
-    transactions = [
-        {"Дата операции": "2022-01-01", "Сумма операции": 100, "Категория": "Food", "Описание": "Lunch"},
-        {"Дата операции": "2022-01-01", "Сумма операции": 200, "Категория": "Travel", "Описание": "Taxi"},
-        {"Дата операции": "2022-01-01", "Сумма операции": 50, "Категория": "Food", "Описание": "Coffee"},
+    data = {
+        "Дата платежа": ["2023-10-01", "2023-10-02", "2023-10-03", "2023-10-04", "2023-10-05", "2023-10-06"],
+        "Сумма операции": [1000, 500, 1500, 2000, 750, 300],
+        "Категория": ["Еда", "Транспорт", "Развлечения", "Еда", "Транспорт", "Развлечения"],
+        "Описание": ["Покупка еды", "Оплата проезда", "Билет в кино", "Ужин в ресторане", "Такси", "Концерт"],
+    }
+    transactions_top = pd.DataFrame(data)
+
+    # Ожидаемый результат
+    expected_result = [
+        {"amount": 2000, "category": "Еда", "date": "2023-10-04", "description": "Ужин в ресторане"},
+        {"amount": 1500, "category": "Развлечения", "date": "2023-10-03", "description": "Билет в кино"},
+        {"amount": 1000, "category": "Еда", "date": "2023-10-01", "description": "Покупка еды"},
+        {"amount": 750, "category": "Транспорт", "date": "2023-10-05", "description": "Такси"},
+        {"amount": 500, "category": "Транспорт", "date": "2023-10-02", "description": "Оплата проезда"},
     ]
-    result = get_top_transactions(transactions, top_n=2)
-    assert len(result) == 2
-    assert result[0]["amount"] == 200
-    assert result[1]["amount"] == 100
+
+    # Вызов тестируемой функции
+    result = get_top_transactions(transactions_top, top_n=5)
+
+    # Проверка результата
+    assert result == expected_result, f"Ошибка: ожидалось {expected_result}, получено {result}"
 
 
 @patch("src.utils.requests.get")
@@ -66,14 +82,3 @@ def test_get_currency_rates(mock_get):  # type: ignore
         assert result[0]["rate"] == 74.15
         assert result[1]["currency"] == "EUR"
         assert result[1]["rate"] == 88.25
-
-
-@patch("pandas.read_excel")
-def test_reader_excel(mock_read_excel):  # type: ignore
-    # Настраиваем мок, чтобы он возвращал DataFrame
-    mock_read_excel.return_value = pd.DataFrame({"column1": [1, 2, 3], "column2": ["a", "b", "c"]})
-
-    expected = [{"column1": 1, "column2": "a"}, {"column1": 2, "column2": "b"}, {"column1": 3, "column2": "c"}]
-
-    result = reader_excel("test.xlsx")
-    assert result == expected

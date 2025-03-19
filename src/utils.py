@@ -1,18 +1,40 @@
 import json
+import logging
 import os
-from collections import defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
 import requests
 from dotenv import load_dotenv
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def get_date_transact(date_in: str) -> pd.DataFrame:
+    """Функция? которая возвращает DataFrame, отфильтрованный по дате"""
+    # Преобразуйте входную строку на случай, если время отсутствует
+    if len(date_in) == 10:  # формат 'DD.MM.YYYY'
+        date_in += " 00:00:00"
+        logging.debug(f"Преобразована строка даты: {date_in}")
+    parsed_date = datetime.strptime(date_in, "%d.%m.%Y %H:%M:%S")
+    logging.debug(f"Разобранная дата: {parsed_date}")
+    start_date = parsed_date.replace(day=1)
+    transact_for_date = reader_excel()
+    filter_transact = transact_for_date[
+        (pd.to_datetime(transact_for_date["Дата операции"], dayfirst=True) >= start_date)
+        & (pd.to_datetime(transact_for_date["Дата операции"], dayfirst=True) <= parsed_date)
+    ]
+    return filter_transact
+
 
 def get_greeting(current_time: datetime) -> str:
     """Приветствие в формате "???", где ???
     — «Доброе утро» / «Добрый день» / «Добрый вечер» / «Доброй ночи»
     в зависимости от текущего времени."""
+    logger.info("Получаем текущее время")
     hour = current_time.hour
     if 5 <= hour < 12:
         return "Доброе утро!"
@@ -24,56 +46,48 @@ def get_greeting(current_time: datetime) -> str:
         return "Доброй ночи!"
 
 
-def calculate_cashback(total_spent: float) -> float:
-    """кешбэк (1 рубль на каждые 100 рублей)."""
-    return total_spent / 100
-
-
-def process_cards(transactions_card: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def process_cards(transactions_card: pd.DataFrame) -> List[Dict]:
     """По каждой карте: последние 4 цифры карты; общая сумма расходов;
     кешбэк (1 рубль на каждые 100 рублей)."""
-    card_data = defaultdict(lambda: {"total_spent": 0, "transactions": []}) # type: ignore
-
-    for transaction in transactions_card:
-        card_number = str(transaction["Номер карты"])
-        amount = transaction["Сумма операции"]
-
-        card_data[card_number]["total_spent"] += amount
-        card_data[card_number]["transactions"].append(transaction)
-
-    cards = []
-    for card_number, data in card_data.items():
-        last_digits = card_number[-4:]
-        total_spent = data["total_spent"]
-        cashback = calculate_cashback(total_spent)
-        cards.append({"last_digits": last_digits, "total_spent": total_spent, "cashback": cashback})
-
+    transactions_card["last_digits"] = transactions_card["Номер карты"].astype(str).str[-4:]
+    total_spent = transactions_card.groupby("last_digits")["Сумма операции"].sum().abs().reset_index().round(2)
+    total_spent.rename(columns={"Сумма операции": "total_spent"}, inplace=True)
+    total_spent["cashback"] = (total_spent["total_spent"] / 100).astype(int).abs()
+    cards = total_spent.to_dict(orient="records")
+    logger.info("Получаем данные по картам")
     return cards
 
 
-def get_top_transactions(transactions_top: List[Dict[str, Any]], top_n: int = 5) -> List[Dict[str, Any]]:
+def get_top_transactions(transactions_top: pd.DataFrame, top_n: int = 5) -> List[Dict]:
     """Топ-5 транзакций по сумме платежа."""
-    sorted_transactions = sorted(transactions_top, key=lambda x: x["Сумма операции"], reverse=True)
-    top_sorted = sorted_transactions[:top_n]
-    for_json = []
-    for transact in top_sorted:
-        date = transact["Дата операции"]
-        amount = transact["Сумма операции"]
-        category = transact["Категория"]
-        description = transact["Описание"]
-        for_json.append({"date": date, "amount": amount, "category": category, "description": description})
-    return for_json
+    sorted_transactions = transactions_top.nlargest(top_n, "Сумма операции")
+    result_top = sorted_transactions[["Дата платежа", "Сумма операции", "Категория", "Описание"]].copy()
+    result_top.rename(
+        columns={
+            "Дата платежа": "date",
+            "Сумма операции": "amount",
+            "Категория": "category",
+            "Описание": "description",
+        },
+        inplace=True,
+    )
+    result = result_top.to_dict(orient="records")
+    logger.info("Получаем данные по топ-5 сумм платежей")
+    return result
 
 
 def get_currency_rates() -> List[Dict[str, Any]]:
     """Курс валют."""
     data = requests.get("https://www.cbr-xml-daily.ru/daily_json.js").json()
     data_result = []
-    with open("/Users/veronikasidorova/course_project_1/data/user_settings.json") as f:
+    # Определяем путь к файлу user_settings.json относительно текущего скрипта
+    settings_path = Path(__file__).parent.parent / "data" / "user_settings.json"
+    with open(settings_path) as f:
         currency = json.load(f)
     for cur in currency["user_currencies"]:
         currency_rate = {"currency": cur, "rate": data["Valute"][cur]["Value"]}
         data_result.append(currency_rate)
+        logger.info("Получаем данные по курсу валют")
     return data_result
 
 
@@ -87,7 +101,8 @@ def get_stock_prices() -> List[Dict[str, Any]]:
     start_date = three_days_ago.strftime("%Y-%m-%d")
     headers = {"apikey": API_KEY}
     result = []
-    with open("/Users/veronikasidorova/course_project_1/data/user_settings.json") as f:
+    settings_path = Path(__file__).parent.parent / "data" / "user_settings.json"
+    with open(settings_path) as f:
         stocks = json.load(f)
     for stock in stocks["user_stocks"]:
         url = f"https://api.polygon.io/v2/aggs/ticker/{stock}/range/1/day/{start_date}/{stop_date}?apiKey={API_KEY}"
@@ -95,16 +110,15 @@ def get_stock_prices() -> List[Dict[str, Any]]:
         price = response.json()["results"][0]["c"]
         stock_price = {"stock": stock, "price": price}
         result.append(stock_price)
+        logger.info("Получаем данные по стоимости акций")
     return result
 
 
-def reader_excel(file_excel: Any) -> list[dict]:
-    """Функция для считывания финансовых операций из Excel принимает путь
-    к файлу Excel в качестве аргумента и выдает список словарей с транзакциями"""
-    transactions_from_excel = pd.read_excel(file_excel, na_filter=True)
-    transactions_from_excel.fillna(value=0, inplace=True)
-    transactions_from_excel_list = transactions_from_excel.to_dict(orient="records")
-    return transactions_from_excel_list
-
-
-transactions = reader_excel("/Users/veronikasidorova/course_project_1/data/operations.xlsx")
+def reader_excel() -> pd.DataFrame:
+    # формируем путь до таблицы
+    logger.info("Получаем датафрейм из xlsx-файла")
+    current_dir = os.path.dirname(__file__)
+    excel_file_path = os.path.join(current_dir, "..", "data", "operations.xlsx")
+    # считываем датафрейм
+    transactions_hp = pd.read_excel(excel_file_path)
+    return transactions_hp
