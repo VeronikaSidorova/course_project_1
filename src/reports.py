@@ -29,7 +29,7 @@ def report_decorator(filename: Optional[str] = None):  # type: ignore
 
         return wrapper
 
-    return decorator if filename else report_decorator(filename)
+    return decorator
 
 
 @report_decorator()
